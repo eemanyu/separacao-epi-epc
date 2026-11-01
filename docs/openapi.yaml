@@ -1,0 +1,622 @@
+openapi: 3.1.0
+info:
+  title: Separação EPI/EPC
+  version: 1.0.0
+  description: |
+    Serviço da equipe operacional: recebe a mobilização em Excel, permite conferir
+    o estoque e devolve a separação ao sistema de origem (webhook + consulta).
+
+    Rotas `/api/integracao/*` exigem `X-API-Key`. As demais são usadas pelas telas
+    internas e não têm autenticação própria (publique atrás de VPN/proxy).
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Integração
+    description: Usadas pelo sistema de origem.
+  - name: Operação
+    description: Usadas pelas telas da equipe operacional.
+paths:
+  /api/health:
+    get:
+      tags: [Operação]
+      operationId: health
+      responses:
+        '200':
+          description: Serviço no ar.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, const: true }
+                  servico: { type: string }
+                  hora: { type: string, format: date-time }
+
+  /api/mobilizacoes:
+    get:
+      tags: [Operação]
+      operationId: listarMobilizacoes
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [abertas, pendente, em_separacao, concluida, cancelada]
+          description: '"abertas" = pendente + em_separacao.'
+      responses:
+        '200':
+          description: Lista de mobilizações.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mobilizacoes]
+                properties:
+                  mobilizacoes:
+                    type: array
+                    items: { $ref: '#/components/schemas/MobilizacaoResumo' }
+    post:
+      tags: [Operação]
+      operationId: uploadPlanilhaUi
+      description: Upload manual pela tela `/importar.html`. Desabilitável com `PERMITIR_UPLOAD_UI=false`.
+      requestBody: { $ref: '#/components/requestBodies/UploadMobilizacao' }
+      responses:
+        '201':
+          description: Mobilização criada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MobilizacaoCriada' }
+        '400': { $ref: '#/components/responses/Erro400' }
+        '403': { $ref: '#/components/responses/Erro400' }
+        '409': { $ref: '#/components/responses/Erro409' }
+        '413': { $ref: '#/components/responses/Erro413' }
+        '422': { $ref: '#/components/responses/Erro422' }
+
+  /api/mobilizacoes/{id}:
+    get:
+      tags: [Operação]
+      operationId: obterMobilizacao
+      parameters: [{ $ref: '#/components/parameters/MobilizacaoId' }]
+      responses:
+        '200':
+          description: Mobilização com itens e separação.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mobilizacao' }
+        '404': { $ref: '#/components/responses/Erro404' }
+
+  /api/mobilizacoes/{id}/separacao:
+    post:
+      tags: [Operação]
+      operationId: iniciarSeparacao
+      description: 'Cria o rascunho (idempotente: devolve o existente se já houver).'
+      parameters: [{ $ref: '#/components/parameters/MobilizacaoId' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operador: { type: [string, 'null'] }
+      responses:
+        '201':
+          description: Separação aberta.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Separacao' }
+        '404': { $ref: '#/components/responses/Erro404' }
+        '409': { $ref: '#/components/responses/Erro409' }
+
+  /api/separacoes/{id}:
+    get:
+      tags: [Operação]
+      operationId: obterSeparacao
+      parameters: [{ $ref: '#/components/parameters/SeparacaoId' }]
+      responses:
+        '200':
+          description: Separação com itens.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Separacao' }
+        '404': { $ref: '#/components/responses/Erro404' }
+    put:
+      tags: [Operação]
+      operationId: salvarRascunho
+      description: |
+        Salva o rascunho. Campos omitidos permanecem como estão (o autosave envia
+        só o item alterado). `disponivel = false` zera quantidade e patrimônios.
+      parameters: [{ $ref: '#/components/parameters/SeparacaoId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SalvarSeparacao' }
+      responses:
+        '200':
+          description: Rascunho salvo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Separacao' }
+        '400': { $ref: '#/components/responses/Erro400' }
+        '404': { $ref: '#/components/responses/Erro404' }
+        '409': { $ref: '#/components/responses/Erro409' }
+        '422': { $ref: '#/components/responses/Erro422' }
+
+  /api/separacoes/{id}/enviar:
+    post:
+      tags: [Operação]
+      operationId: enviarSeparacao
+      description: |
+        Valida todos os itens, conclui a separação e coloca o webhook na outbox.
+        Idempotente: a segunda chamada devolve 200 com `ja_enviada: true`.
+      parameters: [{ $ref: '#/components/parameters/SeparacaoId' }]
+      responses:
+        '201':
+          description: Separação enviada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnvioSeparacao' }
+        '200':
+          description: Já estava enviada (idempotência).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnvioSeparacao' }
+        '404': { $ref: '#/components/responses/Erro404' }
+        '422': { $ref: '#/components/responses/Erro422' }
+
+  /api/notificacoes:
+    get:
+      tags: [Operação]
+      operationId: listarNotificacoes
+      parameters:
+        - name: limite
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+      responses:
+        '200':
+          description: Notificações do sininho.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nao_lidas: { type: integer }
+                  notificacoes:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notificacao' }
+
+  /api/notificacoes/resumo:
+    get:
+      tags: [Operação]
+      operationId: resumoNotificacoes
+      responses:
+        '200':
+          description: Contadores usados no polling do sininho.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nao_lidas: { type: integer }
+                  pendentes: { type: integer }
+
+  /api/notificacoes/lidas:
+    post:
+      tags: [Operação]
+      operationId: marcarTodasLidas
+      responses:
+        '200':
+          description: Quantidade marcada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  marcadas: { type: integer }
+
+  /api/notificacoes/{id}/lida:
+    post:
+      tags: [Operação]
+      operationId: marcarNotificacaoLida
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Notificação marcada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  lida: { type: boolean }
+        '404': { $ref: '#/components/responses/Erro404' }
+
+  /api/integracao/mobilizacoes:
+    post:
+      tags: [Integração]
+      operationId: enviarMobilizacao
+      description: |
+        Recebe o Excel e cria a mobilização + notificação. O `mobilizacao_id` vem do
+        sistema de origem; repetir o mesmo ID devolve 409 (trate como já recebido).
+      security: [{ apiKey: [] }]
+      requestBody: { $ref: '#/components/requestBodies/UploadMobilizacao' }
+      responses:
+        '201':
+          description: Mobilização criada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MobilizacaoCriada' }
+        '400': { $ref: '#/components/responses/Erro400' }
+        '401': { $ref: '#/components/responses/Erro401' }
+        '409': { $ref: '#/components/responses/Erro409' }
+        '413': { $ref: '#/components/responses/Erro413' }
+        '422': { $ref: '#/components/responses/Erro422' }
+
+  /api/integracao/mobilizacoes/{id}:
+    get:
+      tags: [Integração]
+      operationId: consultarMobilizacao
+      security: [{ apiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/MobilizacaoId' }]
+      responses:
+        '200':
+          description: Status resumido da mobilização.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MobilizacaoStatus' }
+        '401': { $ref: '#/components/responses/Erro401' }
+        '404': { $ref: '#/components/responses/Erro404' }
+
+  /api/integracao/mobilizacoes/{id}/separacao:
+    get:
+      tags: [Integração]
+      operationId: consultarSeparacao
+      description: |
+        Payload completo da separação. Enquanto rascunho, `concluida` é `false` e
+        campos não conferidos vêm `null`. Use como fallback do webhook.
+      security: [{ apiKey: [] }]
+      parameters: [{ $ref: '#/components/parameters/MobilizacaoId' }]
+      responses:
+        '200':
+          description: Separação encontrada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayloadSeparacao' }
+        '401': { $ref: '#/components/responses/Erro401' }
+        '404': { $ref: '#/components/responses/Erro404' }
+
+  /api/integracao/webhooks/reprocessar:
+    post:
+      tags: [Integração]
+      operationId: reprocessarWebhooks
+      description: Recoloca entregas com status `falhou` na fila.
+      security: [{ apiKey: [] }]
+      responses:
+        '200':
+          description: Quantidade recolocada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reprocessadas: { type: integer }
+        '401': { $ref: '#/components/responses/Erro401' }
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    MobilizacaoId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      example: MOB-2026-000123
+    SeparacaoId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      example: SEP-20261101-RALGA9
+
+  requestBodies:
+    UploadMobilizacao:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [arquivo]
+            properties:
+              arquivo:
+                type: string
+                format: binary
+                description: Planilha `.xlsx` (até `MAX_UPLOAD_MB`).
+              mobilizacao_id:
+                type: string
+                maxLength: 64
+                pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$'
+              nome: { type: string }
+              obra: { type: string }
+              solicitante: { type: string }
+
+  responses:
+    Erro400:
+      description: Requisição inválida.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erro' }
+    Erro401:
+      description: Chave de API ausente ou inválida.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erro' }
+    Erro404:
+      description: Recurso não encontrado.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erro' }
+    Erro409:
+      description: Conflito de estado (duplicidade, separação enviada).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erro' }
+    Erro413:
+      description: Arquivo acima do limite.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erro' }
+    Erro422:
+      description: Regra de negócio/planilha.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Erro' }
+
+  schemas:
+    Erro:
+      type: object
+      required: [erro, codigo]
+      properties:
+        erro: { type: string }
+        codigo: { type: string }
+        detalhes:
+          type: object
+          additionalProperties: true
+
+    ItemMobilizacao:
+      type: object
+      properties:
+        id: { type: integer }
+        mobilizacao_id: { type: string }
+        linha:
+          type: integer
+          description: Linha real da planilha (1-based), usada para preencher a coluna Estoque.
+        codigo: { type: [string, 'null'] }
+        descricao: { type: string }
+        unidade: { type: [string, 'null'] }
+        quantidade_solicitada: { type: number }
+        observacao: { type: [string, 'null'] }
+        dados_origem:
+          type: [string, 'null']
+          description: JSON da linha original da planilha.
+
+    Mobilizacao:
+      type: object
+      properties:
+        id: { type: string }
+        nome: { type: string }
+        obra: { type: [string, 'null'] }
+        solicitante: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/StatusMobilizacao' }
+        arquivo_nome: { type: [string, 'null'] }
+        itens_total: { type: integer }
+        criada_em: { type: string, format: date-time }
+        atualizada_em: { type: string, format: date-time }
+        itens:
+          type: array
+          items: { $ref: '#/components/schemas/ItemMobilizacao' }
+        separacao: { oneOf: [{ $ref: '#/components/schemas/Separacao' }, { type: 'null' }] }
+
+    MobilizacaoCriada:
+      allOf:
+        - $ref: '#/components/schemas/Mobilizacao'
+        - type: object
+          properties:
+            notificacao_id: { type: string }
+            planilha:
+              type: object
+              properties:
+                aba: { type: string }
+                cabecalho_linha: { type: integer }
+
+    MobilizacaoResumo:
+      type: object
+      properties:
+        id: { type: string }
+        nome: { type: string }
+        obra: { type: [string, 'null'] }
+        solicitante: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/StatusMobilizacao' }
+        itens_total: { type: integer }
+        criada_em: { type: string, format: date-time }
+        atualizada_em: { type: string, format: date-time }
+        separacao_id: { type: [string, 'null'] }
+        separacao_status: { type: [string, 'null'], enum: [rascunho, enviada, null] }
+        operador: { type: [string, 'null'] }
+        conferidos: { type: integer }
+
+    MobilizacaoStatus:
+      type: object
+      properties:
+        mobilizacao_id: { type: string }
+        nome: { type: string }
+        obra: { type: [string, 'null'] }
+        solicitante: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/StatusMobilizacao' }
+        itens_total: { type: integer }
+        criada_em: { type: string, format: date-time }
+        atualizada_em: { type: string, format: date-time }
+        separacao:
+          oneOf:
+            - type: object
+              properties:
+                separacao_id: { type: string }
+                status: { type: string, enum: [rascunho, enviada] }
+                operador: { type: [string, 'null'] }
+                enviada_em: { type: [string, 'null'], format: date-time }
+            - type: 'null'
+
+    Separacao:
+      type: object
+      properties:
+        id: { type: string }
+        mobilizacao_id: { type: string }
+        operador: { type: [string, 'null'] }
+        status: { type: string, enum: [rascunho, enviada] }
+        observacao: { type: [string, 'null'] }
+        criada_em: { type: string, format: date-time }
+        atualizada_em: { type: string, format: date-time }
+        enviada_em: { type: [string, 'null'], format: date-time }
+        mobilizacao:
+          type: object
+          properties:
+            id: { type: string }
+            nome: { type: string }
+            obra: { type: [string, 'null'] }
+            solicitante: { type: [string, 'null'] }
+            status: { $ref: '#/components/schemas/StatusMobilizacao' }
+        itens:
+          type: array
+          items: { $ref: '#/components/schemas/ItemSeparacao' }
+
+    ItemSeparacao:
+      type: object
+      properties:
+        id: { type: integer }
+        mobilizacao_item_id: { type: integer }
+        disponivel:
+          type: [boolean, 'null']
+          description: null = não conferido; true = tem; false = não tem.
+        quantidade_separada: { type: [number, 'null'] }
+        patrimonios:
+          type: array
+          items: { type: string }
+        observacao: { type: [string, 'null'] }
+        linha: { type: integer }
+        codigo: { type: [string, 'null'] }
+        descricao: { type: string }
+        unidade: { type: [string, 'null'] }
+        quantidade_solicitada: { type: number }
+        observacao_material: { type: [string, 'null'] }
+
+    SalvarSeparacao:
+      type: object
+      properties:
+        operador: { type: [string, 'null'] }
+        observacao: { type: [string, 'null'] }
+        itens:
+          type: array
+          items:
+            type: object
+            required: [mobilizacao_item_id]
+            properties:
+              mobilizacao_item_id: { type: integer }
+              disponivel: { type: [boolean, 'null'] }
+              quantidade_separada: { type: [number, 'null'] }
+              patrimonios:
+                oneOf:
+                  - type: array
+                    items: { type: string }
+                  - type: 'null'
+              observacao: { type: [string, 'null'] }
+
+    EnvioSeparacao:
+      type: object
+      properties:
+        ja_enviada: { type: boolean }
+        separacao: { $ref: '#/components/schemas/Separacao' }
+        payload: { $ref: '#/components/schemas/PayloadSeparacao' }
+
+    Resumo:
+      type: object
+      properties:
+        itens_total: { type: integer }
+        disponiveis: { type: integer }
+        parciais: { type: integer }
+        sem_estoque: { type: integer }
+        quantidade_solicitada_total: { type: number }
+        quantidade_separada_total: { type: number }
+
+    ItemPayload:
+      type: object
+      properties:
+        linha: { type: integer }
+        codigo: { type: [string, 'null'] }
+        descricao: { type: string }
+        unidade: { type: [string, 'null'] }
+        quantidade_solicitada: { type: number }
+        disponivel: { type: [boolean, 'null'] }
+        quantidade_separada: { type: [number, 'null'] }
+        patrimonios:
+          type: array
+          items: { type: string }
+        observacao: { type: [string, 'null'] }
+        estoque_texto:
+          type: [string, 'null']
+          description: Texto pronto para a coluna Estoque; null se não conferido.
+          examples:
+            - "Disponível (12/12 un)"
+            - "Parcial (5/24 par) - PAT: PAT-A"
+            - "Sem estoque"
+
+    PayloadSeparacao:
+      type: object
+      properties:
+        evento: { type: string, const: separacao.concluida }
+        entrega_id: { type: [string, 'null'] }
+        mobilizacao_id: { type: string }
+        mobilizacao_nome: { type: string }
+        obra: { type: [string, 'null'] }
+        separacao_id: { type: string }
+        status: { type: string, enum: [rascunho, enviada] }
+        operador: { type: [string, 'null'] }
+        observacao: { type: [string, 'null'] }
+        enviada_em: { type: [string, 'null'], format: date-time }
+        resumo: { $ref: '#/components/schemas/Resumo' }
+        itens:
+          type: array
+          items: { $ref: '#/components/schemas/ItemPayload' }
+        concluida:
+          type: boolean
+          description: Presente apenas na consulta GET. true = separação enviada.
+        consultado_em:
+          type: string
+          format: date-time
+          description: Presente apenas na consulta GET.
+
+    Notificacao:
+      type: object
+      properties:
+        id: { type: string }
+        mobilizacao_id: { type: string }
+        tipo: { type: string }
+        titulo: { type: string }
+        mensagem: { type: [string, 'null'] }
+        lida_em: { type: [string, 'null'], format: date-time }
+        criada_em: { type: string, format: date-time }
+        mobilizacao_nome: { type: string }
+        mobilizacao_status: { $ref: '#/components/schemas/StatusMobilizacao' }
+
+    StatusMobilizacao:
+      type: string
+      enum: [pendente, em_separacao, concluida, cancelada]

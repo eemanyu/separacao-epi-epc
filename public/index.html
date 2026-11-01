@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mobilizações · Separação EPI/EPC</title>
+  <meta name="theme-color" content="#0f766e">
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f766e'/%3E%3Cpath d='M9 12h14v12H9zM12 12V9a4 4 0 0 1 8 0v3' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="topo">
+    <div class="topo-conteudo">
+      <a class="marca" href="/">
+        <span class="marca-icone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+            <path d="m3.3 7 8.7 5 8.7-5M12 22V12"/>
+          </svg>
+        </span>
+        <span><strong>Separação</strong><small>EPI &amp; EPC</small></span>
+      </a>
+      <div class="acoes-topo">
+        <a class="btn btn-fantasma" href="/importar.html" title="Importar planilha manualmente">Importar</a>
+        <div data-sino></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="titulo-pagina">
+      <div>
+        <h1>Mobilizações</h1>
+        <p>Materiais aguardando separação da equipe operacional.</p>
+      </div>
+      <button type="button" class="btn btn-fantasma" id="atualizar">Atualizar</button>
+    </div>
+
+    <div class="filtros" role="tablist" aria-label="Filtrar mobilizações">
+      <button type="button" class="chip" role="tab" data-filtro="abertas" aria-selected="true">Em aberto</button>
+      <button type="button" class="chip" role="tab" data-filtro="concluida" aria-selected="false">Concluídas</button>
+      <button type="button" class="chip" role="tab" data-filtro="" aria-selected="false">Todas</button>
+    </div>
+
+    <section id="lista" class="grade" aria-live="polite">
+      <div class="vazio"><strong>Carregando…</strong>Buscando mobilizações.</div>
+    </section>
+  </main>
+
+  <div id="toast" role="status"></div>
+  <script type="module" src="/assets/lista.js"></script>
+</body>
+</html>

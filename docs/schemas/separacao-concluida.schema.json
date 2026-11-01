@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://separacao.local/schemas/separacao-concluida.schema.json",
+  "title": "separacao.concluida",
+  "description": "Payload do webhook e da consulta GET /api/integracao/mobilizacoes/{id}/separacao. Use 'linha' para escrever a coluna Estoque na planilha de origem.",
+  "type": "object",
+  "required": [
+    "evento",
+    "mobilizacao_id",
+    "separacao_id",
+    "status",
+    "resumo",
+    "itens"
+  ],
+  "properties": {
+    "evento": { "const": "separacao.concluida" },
+    "entrega_id": { "type": ["string", "null"] },
+    "mobilizacao_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "mobilizacao_nome": { "type": "string" },
+    "obra": { "type": ["string", "null"] },
+    "separacao_id": { "type": "string", "pattern": "^SEP-" },
+    "status": { "enum": ["rascunho", "enviada"] },
+    "operador": { "type": ["string", "null"] },
+    "observacao": { "type": ["string", "null"] },
+    "enviada_em": { "type": ["string", "null"], "format": "date-time" },
+    "concluida": {
+      "type": "boolean",
+      "description": "Presente apenas na consulta GET."
+    },
+    "consultado_em": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Presente apenas na consulta GET."
+    },
+    "resumo": {
+      "type": "object",
+      "required": [
+        "itens_total",
+        "disponiveis",
+        "parciais",
+        "sem_estoque",
+        "quantidade_solicitada_total",
+        "quantidade_separada_total"
+      ],
+      "properties": {
+        "itens_total": { "type": "integer", "minimum": 0 },
+        "disponiveis": { "type": "integer", "minimum": 0 },
+        "parciais": { "type": "integer", "minimum": 0 },
+        "sem_estoque": { "type": "integer", "minimum": 0 },
+        "quantidade_solicitada_total": { "type": "number", "minimum": 0 },
+        "quantidade_separada_total": { "type": "number", "minimum": 0 }
+      }
+    },
+    "itens": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "linha",
+          "descricao",
+          "quantidade_solicitada",
+          "disponivel",
+          "quantidade_separada",
+          "patrimonios",
+          "estoque_texto"
+        ],
+        "properties": {
+          "linha": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Linha real da planilha de origem (1-based)."
+          },
+          "codigo": { "type": ["string", "null"] },
+          "descricao": { "type": "string" },
+          "unidade": { "type": ["string", "null"] },
+          "quantidade_solicitada": { "type": "number", "minimum": 0 },
+          "disponivel": { "type": ["boolean", "null"] },
+          "quantidade_separada": { "type": ["number", "null"], "minimum": 0 },
+          "patrimonios": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "observacao": { "type": ["string", "null"] },
+          "estoque_texto": {
+            "type": ["string", "null"],
+            "description": "Texto pronto para a coluna Estoque. null se o item não foi conferido."
+          }
+        }
+      }
+    }
+  }
+}

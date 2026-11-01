@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Importar mobilização · Separação EPI/EPC</title>
+  <meta name="theme-color" content="#0f766e">
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f766e'/%3E%3Cpath d='M9 12h14v12H9zM12 12V9a4 4 0 0 1 8 0v3' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="topo">
+    <div class="topo-conteudo">
+      <a class="marca" href="/">
+        <span class="marca-icone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+            <path d="m3.3 7 8.7 5 8.7-5M12 22V12"/>
+          </svg>
+        </span>
+        <span><strong>Separação</strong><small>EPI &amp; EPC</small></span>
+      </a>
+      <div class="acoes-topo">
+        <a class="btn btn-fantasma" href="/">Mobilizações</a>
+        <div data-sino></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <a class="voltar" href="/">← Voltar para mobilizações</a>
+
+    <div class="titulo-pagina">
+      <div>
+        <h1>Importar mobilização</h1>
+        <p>Envie a planilha de materiais. Use esta tela para testes ou quando o upload não vier do sistema de origem.</p>
+      </div>
+    </div>
+
+    <div class="painel">
+      <div id="resultado"></div>
+
+      <form id="formulario" class="formulario" novalidate>
+        <label class="arquivo" for="arquivo">
+          <input id="arquivo" name="arquivo" type="file" accept=".xlsx,.xlsm" required>
+          <strong id="nome-arquivo">Selecionar planilha .xlsx</strong>
+          <span>Colunas aceitas: Código, Descrição do Material, Unidade, Quantidade e Observação.</span>
+        </label>
+
+        <div class="campo">
+          <label for="mobilizacao_id">ID da mobilização (opcional)</label>
+          <input id="mobilizacao_id" name="mobilizacao_id" type="text" maxlength="64" placeholder="Gerado automaticamente se vazio">
+        </div>
+        <div class="campo">
+          <label for="nome">Nome da mobilização</label>
+          <input id="nome" name="nome" type="text" placeholder="Ex.: Mobilização Obra Norte">
+        </div>
+        <div class="campo">
+          <label for="obra">Obra (opcional)</label>
+          <input id="obra" name="obra" type="text">
+        </div>
+        <div class="campo">
+          <label for="solicitante">Solicitante (opcional)</label>
+          <input id="solicitante" name="solicitante" type="text">
+        </div>
+
+        <button type="submit" class="btn btn-primario btn-grande" id="enviar">Enviar planilha</button>
+      </form>
+    </div>
+  </main>
+
+  <div id="toast" role="status"></div>
+  <script type="module" src="/assets/importar.js"></script>
+</body>
+</html>
